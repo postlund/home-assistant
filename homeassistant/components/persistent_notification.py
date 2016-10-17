@@ -14,6 +14,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.entity import generate_entity_id
 from homeassistant.util import slugify
 from homeassistant.config import load_yaml_config_file
+from homeassistant.util.async import run_callback_threadsafe
 
 DOMAIN = 'persistent_notification'
 ENTITY_ID_FORMAT = DOMAIN + '.{}'
@@ -36,6 +37,12 @@ _LOGGER = logging.getLogger(__name__)
 
 def create(hass, message, title=None, notification_id=None):
     """Generate a notification."""
+    run_callback_threadsafe(
+        hass.loop, hass, message, title, notification_id).result()
+
+
+def async_create(hass, message, title=None, notification_id=None):
+    """Generate a notification."""
     data = {
         key: value for key, value in [
             (ATTR_TITLE, title),
@@ -44,7 +51,7 @@ def create(hass, message, title=None, notification_id=None):
         ] if value is not None
     }
 
-    hass.services.call(DOMAIN, SERVICE_CREATE, data)
+    hass.services.async_call(DOMAIN, SERVICE_CREATE, data)
 
 
 def setup(hass, config):
