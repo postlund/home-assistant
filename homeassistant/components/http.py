@@ -32,7 +32,6 @@ import homeassistant.helpers.config_validation as cv
 from homeassistant.components import persistent_notification
 
 DOMAIN = 'http'
-REQUIREMENTS = ('aiohttp==1.0.5',)
 
 CONF_API_PASSWORD = 'api_password'
 CONF_SERVER_HOST = 'server_host'
