@@ -152,7 +152,7 @@ class CameraView(HomeAssistantView):
             return self.Response(status=404)
 
         authenticated = (request.authenticated or
-                         request.args.get('token') == camera.access_token)
+                         request.GET.get('token') == camera.access_token)
 
         if not authenticated:
             return self.Response(status=401)

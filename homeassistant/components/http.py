@@ -135,21 +135,25 @@ def setup(hass, config):
         trusted_networks=trusted_networks
     )
 
-    @callback
+    # @callback
     def start_server(event):
-        hass.loop.create_task(server.start())
+        # hass.loop.create_task(server.start())
 
-    # Temp, while fixing listen_once
-    from homeassistant.util.async import run_coroutine_threadsafe
+        # Temp, while fixing listen_once
+        from homeassistant.util.async import run_coroutine_threadsafe
 
-    def start_server(event):
         run_coroutine_threadsafe(server.start(), hass.loop).result()
 
     hass.bus.listen_once(EVENT_HOMEASSISTANT_START, start_server)
 
-    @callback
+    # @callback
     def stop_server(event):
-        hass.loop.create_task(server.stop)
+        # hass.loop.create_task(server.stop)
+
+        # Temp, while fixing listen_once
+        from homeassistant.util.async import run_coroutine_threadsafe
+
+        run_coroutine_threadsafe(server.stop(), hass.loop).result()
 
     hass.bus.listen_once(EVENT_HOMEASSISTANT_STOP, stop_server)
 
@@ -160,79 +164,6 @@ def setup(hass, config):
                               ssl_certificate is not None)
 
     return True
-
-
-# def routing_map(hass):
-#     """Generate empty routing map with HA validators."""
-#     from werkzeug.routing import Map, BaseConverter, ValidationError
-
-#     class EntityValidator(BaseConverter):
-#         """Validate entity_id in urls."""
-
-#         regex = r"(\w+)\.(\w+)"
-
-#         def __init__(self, url_map, exist=True, domain=None):
-#             """Initilalize entity validator."""
-#             super().__init__(url_map)
-#             self._exist = exist
-#             self._domain = domain
-
-#         def to_python(self, value):
-#             """Validate entity id."""
-#             if self._exist and hass.states.get(value) is None:
-#                 raise ValidationError()
-#             if self._domain is not None and \
-#                split_entity_id(value)[0] != self._domain:
-#                 raise ValidationError()
-
-#             return value
-
-#         def to_url(self, value):
-#             """Convert entity_id for a url."""
-#             return value
-
-#     class DateValidator(BaseConverter):
-#         """Validate dates in urls."""
-
-#         regex = r'\d{4}-\d{1,2}-\d{1,2}'
-
-#         def to_python(self, value):
-#             """Validate and convert date."""
-#             parsed = dt_util.parse_date(value)
-
-#             if parsed is None:
-#                 raise ValidationError()
-
-#             return parsed
-
-#         def to_url(self, value):
-#             """Convert date to url value."""
-#             return value.isoformat()
-
-#     class DateTimeValidator(BaseConverter):
-#         """Validate datetimes in urls formatted per ISO 8601."""
-
-#         regex = r'\d{4}-[01]\d-[0-3]\dT[0-2]\d:[0-5]\d:[0-5]\d' \
-#             r'\.\d+([+-][0-2]\d:[0-5]\d|Z)'
-
-#         def to_python(self, value):
-#             """Validate and convert date."""
-#             parsed = dt_util.parse_datetime(value)
-
-#             if parsed is None:
-#                 raise ValidationError()
-
-#             return parsed
-
-#         def to_url(self, value):
-#             """Convert date to url value."""
-#             return value.isoformat()
-
-#     return Map(converters={
-#         'entity': EntityValidator,
-#         'date': DateValidator,
-#         'datetime': DateTimeValidator,
-#     })
 
 
 class HomeAssistantWSGI(object):
@@ -463,7 +394,7 @@ class HomeAssistantView(object):
                      request.path, remote_addr, authenticated)
 
         assert asyncio.iscoroutinefunction(handler) or is_callback(handler), \
-            "Handler should be a coroutine or a callback"
+            "Handler should be a coroutine or a callback."
 
         result = handler(request, **request.match_info)
 
@@ -484,6 +415,7 @@ class HomeAssistantView(object):
         elif result is None:
             result = b''
         elif not isinstance(result, bytes):
-            assert False, 'Result should be None, string, bytes or Response.'
+            assert False, ('Result should be None, string, bytes or Response. '
+                           'Got: {}').format(result)
 
         return web.Response(body=result, status=status_code)
