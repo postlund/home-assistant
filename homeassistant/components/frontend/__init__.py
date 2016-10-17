@@ -1,7 +1,11 @@
 """Handle the frontend for Home Assistant."""
+import asyncio
 import hashlib
+import json
 import logging
 import os
+
+from aiohttp import web
 
 from homeassistant.const import EVENT_HOMEASSISTANT_START
 from homeassistant.components import api
@@ -161,13 +165,14 @@ class BootstrapView(HomeAssistantView):
     url = "/api/bootstrap"
     name = "api:bootstrap"
 
+    @asyncio.coroutine
     def get(self, request):
         """Return all data needed to bootstrap Home Assistant."""
         return self.json({
             'config': self.hass.config.as_dict(),
-            'states': self.hass.states.all(),
-            'events': api.events_json(self.hass),
-            'services': api.services_json(self.hass),
+            'states': self.hass.states.async_all(),
+            'events': api.async_events_json(self.hass),
+            'services': api.async_services_json(self.hass),
             'panels': PANELS,
         })
 
@@ -193,6 +198,7 @@ class IndexView(HomeAssistantView):
             )
         )
 
+    @asyncio.coroutine
     def get(self, request, entity_id=None):
         """Serve the index view."""
         if self.hass.wsgi.development:
@@ -230,7 +236,7 @@ class IndexView(HomeAssistantView):
             icons_url=icons_url, icons=FINGERPRINTS['mdi.html'],
             panel_url=panel_url, panels=PANELS)
 
-        return self.Response(resp, mimetype='text/html')
+        return web.Response(text=resp, content_type='text/html')
 
 
 class ManifestJSONView(HomeAssistantView):
@@ -240,8 +246,8 @@ class ManifestJSONView(HomeAssistantView):
     url = "/manifest.json"
     name = "manifestjson"
 
+    @asyncio.coroutine
     def get(self, request):
         """Return the manifest.json."""
-        import json
         msg = json.dumps(MANIFEST_JSON, sort_keys=True).encode('UTF-8')
-        return self.Response(msg, mimetype="application/manifest+json")
+        return web.Response(body=msg, content_type="application/manifest+json")

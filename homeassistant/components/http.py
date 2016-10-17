@@ -8,6 +8,7 @@ import asyncio
 import hmac
 import json
 import logging
+import os
 from pathlib import Path
 import re
 import ssl
@@ -17,9 +18,9 @@ import voluptuous as vol
 from aiohttp import web
 from aiohttp.file_sender import FileSender
 from aiohttp.errors import HttpMethodNotAllowed
-from aiohttp.web_exceptions import HTTPUnauthorized
+from aiohttp.web_exceptions import HTTPUnauthorized, HTTPMovedPermanently
 
-from homeassistant.core import callback
+from homeassistant.core import callback, is_callback
 import homeassistant.remote as rem
 from homeassistant import util
 from homeassistant.const import (
@@ -245,9 +246,7 @@ class HomeAssistantWSGI(object):
                  trusted_networks):
         """Initilalize the WSGI Home Assistant server."""
         self.app = web.Application(loop=hass.loop)
-        self.views = {}
         self.hass = hass
-        self.extra_apps = {}
         self.development = development
         self.api_password = api_password
         self.ssl_certificate = ssl_certificate
@@ -259,6 +258,13 @@ class HomeAssistantWSGI(object):
         self.event_forwarder = None
         self.server = None
 
+        if development:
+            try:
+                import aiohttp_debugtoolbar
+                aiohttp_debugtoolbar.setup(self.app)
+            except ImportError:
+                pass
+
     def register_view(self, view):
         """Register a view with the WSGI server.
 
@@ -266,14 +272,11 @@ class HomeAssistantWSGI(object):
         It is optional to instantiate it before registering; this method will
         handle it either way.
         """
-        if view.name in self.views:
-            _LOGGER.warning("View '%s' is being overwritten", view.name)
         if isinstance(view, type):
             # Instantiate the view, if needed
             view = view(self.hass)
 
-        self.views[view.name] = view
-        self.app.router.add_route('*', view.url, view)
+        self.app.router.add_route('*', view.url, view, name=view.name)
 
         for url in view.extra_urls:
             self.app.router.add_route('*', url, view)
@@ -287,41 +290,43 @@ class HomeAssistantWSGI(object):
         for the redirect, otherwise it has to be a string with placeholders in
         rule syntax.
         """
-        return  # TODO
-        from werkzeug.routing import Rule
 
-        self.url_map.add(Rule(url, redirect_to=redirect_to))
+        def redirect(request):
+            """Redirect to location."""
+            raise HTTPMovedPermanently(redirect_to)
+
+        self.app.router.add_route('GET', url, redirect)
 
     def register_static_path(self, url_root, path, cache_length=31):
         """Register a folder to serve as a static path.
 
         Specify optional cache length of asset in days.
         """
-        return  # TODO
+        # TODO - TEMPORARY WORKAROUND, DOES NOT SUPPORT GZIP
+        if os.path.isdir(path):
+            self.app.router.add_static(url_root, path)
+            return
+
+        @asyncio.coroutine
+        def serve_file(request):
+            """Redirect to location."""
+            return FileSender().send(request, Path(path))
+
+        self.app.router.add_route('GET', url_root, serve_file)
+
         # http://aiohttp.readthedocs.io/en/stable/web.html#static-file-handling
-        from static import Cling
 
-        headers = []
+        # Cache static while not in development
+        # if cache_length and not self.development:
+        #     # 1 year in seconds
+        #     cache_time = cache_length * 86400
 
-        if cache_length and not self.development:
-            # 1 year in seconds
-            cache_time = cache_length * 86400
+        #     headers.append({
+        #         'prefix': '',
+        #         HTTP_HEADER_CACHE_CONTROL:
+        #         "public, max-age={}".format(cache_time)
+        #     })
 
-            headers.append({
-                'prefix': '',
-                HTTP_HEADER_CACHE_CONTROL:
-                "public, max-age={}".format(cache_time)
-            })
-
-        self.register_wsgi_app(url_root, Cling(path, headers=headers))
-
-    def register_wsgi_app(self, url_root, app):
-        """Register a path to serve a WSGI app."""
-        return  # TODO remove - only used by register_static_path
-        if url_root in self.extra_apps:
-            _LOGGER.warning("Url root '%s' is being overwritten", url_root)
-
-        self.extra_apps[url_root] = app
 
     @asyncio.coroutine
     def start(self):
@@ -417,6 +422,7 @@ class HomeAssistantView(object):
         return web.Response('', status=200)
 
     def __call__(self, request):
+        """Handle incoming request."""
         try:
             handler = getattr(self, request.method.lower())
         except AttributeError:
@@ -456,10 +462,13 @@ class HomeAssistantView(object):
         _LOGGER.info('Serving %s to %s (auth: %s)',
                      request.path, remote_addr, authenticated)
 
-        assert asyncio.iscoroutinefunction(handler), \
-            'handler should be a coroutine'
+        assert asyncio.iscoroutinefunction(handler) or is_callback(handler), \
+            "Handler should be a coroutine or a callback"
 
-        result = yield from handler(request, **request.match_info)
+        result = handler(request, **request.match_info)
+
+        if asyncio.iscoroutine(result):
+            result = yield from result
 
         if isinstance(result, web.StreamResponse):
             # The method handler returned a ready-made Response, how nice of it
@@ -469,5 +478,12 @@ class HomeAssistantView(object):
 
         if isinstance(result, tuple):
             result, status_code = result
+
+        if isinstance(result, str):
+            result = result.encode('utf-8')
+        elif result is None:
+            result = b''
+        elif not isinstance(result, bytes):
+            assert False, 'Result should be None, string, bytes or Response.'
 
         return web.Response(body=result, status=status_code)

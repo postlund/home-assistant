@@ -61,7 +61,7 @@ class APIStatusView(HomeAssistantView):
     url = URL_API
     name = "api:status"
 
-    @asyncio.coroutine
+    @ha.callback
     def get(self, request):
         """Retrieve if API is running."""
         return self.json_message('API running.')
@@ -141,7 +141,7 @@ class APIConfigView(HomeAssistantView):
     url = URL_API_CONFIG
     name = "api:config"
 
-    @asyncio.coroutine
+    @ha.callback
     def get(self, request):
         """Get current configuration."""
         return self.json(self.hass.config.as_dict())
@@ -154,7 +154,7 @@ class APIDiscoveryView(HomeAssistantView):
     url = URL_API_DISCOVERY_INFO
     name = "api:discovery"
 
-    @asyncio.coroutine
+    @ha.callback
     def get(self, request):
         """Get discovery info."""
         needs_auth = self.hass.config.api.api_password is not None
@@ -172,7 +172,7 @@ class APIStatesView(HomeAssistantView):
     url = URL_API_STATES
     name = "api:states"
 
-    @asyncio.coroutine
+    @ha.callback
     def get(self, request):
         """Get current states."""
         return self.json(self.hass.states.async_all())
@@ -184,7 +184,7 @@ class APIEntityStateView(HomeAssistantView):
     url = "/api/states/{entity_id}"  # TODO validation <entity(exist=False):entity_id>
     name = "api:entity-state"
 
-    @asyncio.coroutine
+    @ha.callback
     def get(self, request, entity_id):
         """Retrieve state of entity."""
         state = self.hass.states.get(entity_id)
@@ -224,7 +224,7 @@ class APIEntityStateView(HomeAssistantView):
 
         return resp
 
-    @asyncio.coroutine
+    @ha.callback
     def delete(self, request, entity_id):
         """Remove entity."""
         if self.hass.states.async_remove(entity_id):
@@ -239,7 +239,7 @@ class APIEventListenersView(HomeAssistantView):
     url = URL_API_EVENTS
     name = "api:event-listeners"
 
-    @asyncio.coroutine
+    @ha.callback
     def get(self, request):
         """Get event listeners."""
         return self.json(async_events_json(self.hass))
@@ -281,7 +281,7 @@ class APIServicesView(HomeAssistantView):
     url = URL_API_SERVICES
     name = "api:services"
 
-    @asyncio.coroutine
+    @ha.callback
     def get(self, request):
         """Get registered services."""
         return self.json(async_services_json(self.hass))
@@ -384,7 +384,7 @@ class APIComponentsView(HomeAssistantView):
     url = URL_API_COMPONENTS
     name = "api:components"
 
-    @asyncio.coroutine
+    @ha.callback
     def get(self, request):
         """Get current loaded components."""
         return self.json(self.hass.config.components)

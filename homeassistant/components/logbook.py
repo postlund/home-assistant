@@ -115,13 +115,14 @@ class LogbookView(HomeAssistantView):
 
     url = '/api/logbook'
     name = 'api:logbook'
-    extra_urls = ['/api/logbook/<datetime:datetime>']
+    extra_urls = ['/api/logbook/{datetime}']
 
     def __init__(self, hass, config):
         """Initilalize the logbook view."""
         super().__init__(hass)
         self.config = config
 
+    @asyncio.coroutine
     def get(self, request, datetime=None):
         """Retrieve logbook entries."""
         start_day = dt_util.as_utc(datetime or dt_util.start_of_local_day())

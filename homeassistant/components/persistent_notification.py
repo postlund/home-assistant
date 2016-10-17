@@ -38,7 +38,8 @@ _LOGGER = logging.getLogger(__name__)
 def create(hass, message, title=None, notification_id=None):
     """Generate a notification."""
     run_callback_threadsafe(
-        hass.loop, hass, message, title, notification_id).result()
+        hass.loop, async_create, hass, message, title, notification_id,
+    ).result()
 
 
 def async_create(hass, message, title=None, notification_id=None):
