@@ -181,7 +181,7 @@ class APIStatesView(HomeAssistantView):
 class APIEntityStateView(HomeAssistantView):
     """View to handle EntityState requests."""
 
-    url = "/api/states/{entity_id}"  # TODO validation <entity(exist=False):entity_id>
+    url = "/api/states/{entity_id}"
     name = "api:entity-state"
 
     @ha.callback
