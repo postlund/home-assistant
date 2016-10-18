@@ -135,25 +135,15 @@ def setup(hass, config):
         trusted_networks=trusted_networks
     )
 
-    # @callback
+    @callback
     def start_server(event):
-        # hass.loop.create_task(server.start())
-
-        # Temp, while fixing listen_once
-        from homeassistant.util.async import run_coroutine_threadsafe
-
-        run_coroutine_threadsafe(server.start(), hass.loop).result()
+        hass.loop.create_task(server.start())
 
     hass.bus.listen_once(EVENT_HOMEASSISTANT_START, start_server)
 
-    # @callback
+    @callback
     def stop_server(event):
-        # hass.loop.create_task(server.stop)
-
-        # Temp, while fixing listen_once
-        from homeassistant.util.async import run_coroutine_threadsafe
-
-        run_coroutine_threadsafe(server.stop(), hass.loop).result()
+        hass.loop.create_task(server.stop())
 
     hass.bus.listen_once(EVENT_HOMEASSISTANT_STOP, stop_server)
 
@@ -244,8 +234,6 @@ class HomeAssistantWSGI(object):
             return FileSender().send(request, Path(path))
 
         self.app.router.add_route('GET', url_root, serve_file)
-
-        # http://aiohttp.readthedocs.io/en/stable/web.html#static-file-handling
 
         # Cache static while not in development
         # if cache_length and not self.development:
