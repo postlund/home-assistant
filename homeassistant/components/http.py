@@ -25,14 +25,14 @@ import homeassistant.remote as rem
 from homeassistant import util
 from homeassistant.const import (
     SERVER_PORT, HTTP_HEADER_HA_AUTH, HTTP_HEADER_CACHE_CONTROL,
-    HTTP_HEADER_ACCESS_CONTROL_ALLOW_ORIGIN, CONTENT_TYPE_JSON,
-    HTTP_HEADER_ACCESS_CONTROL_ALLOW_HEADERS, ALLOWED_CORS_HEADERS,
-    EVENT_HOMEASSISTANT_STOP, EVENT_HOMEASSISTANT_START)
+    CONTENT_TYPE_JSON, ALLOWED_CORS_HEADERS, EVENT_HOMEASSISTANT_STOP,
+    EVENT_HOMEASSISTANT_START)
 from homeassistant.core import split_entity_id
 import homeassistant.helpers.config_validation as cv
 from homeassistant.components import persistent_notification
 
 DOMAIN = 'http'
+REQUIREMENTS = ('aiohttp_cors==0.4.0',)
 
 CONF_API_PASSWORD = 'api_password'
 CONF_SERVER_HOST = 'server_host'
@@ -166,6 +166,8 @@ class HomeAssistantWSGI(object):
                  ssl_key, server_host, server_port, cors_origins,
                  trusted_networks):
         """Initilalize the WSGI Home Assistant server."""
+        import aiohttp_cors
+
         self.app = web.Application(loop=hass.loop)
         self.hass = hass
         self.development = development
@@ -174,10 +176,19 @@ class HomeAssistantWSGI(object):
         self.ssl_key = ssl_key
         self.server_host = server_host
         self.server_port = server_port
-        self.cors_origins = cors_origins
         self.trusted_networks = trusted_networks
         self.event_forwarder = None
         self.server = None
+
+        if cors_origins:
+            self.cors = aiohttp_cors.setup(self.app, defaults={
+                host: aiohttp_cors.ResourceOptions(
+                    allow_headers=ALLOWED_CORS_HEADERS,
+                    allow_methods='*',
+                ) for host in cors_origins
+            })
+        else:
+            self.cors = None
 
         if development:
             try:
@@ -249,6 +260,10 @@ class HomeAssistantWSGI(object):
     @asyncio.coroutine
     def start(self):
         """Start the wsgi server."""
+        if self.cors is not None:
+            for route in list(self.app.router.routes()):
+                self.cors.add(route)
+
         if self.ssl_certificate:
             context = ssl.SSLContext(SSL_VERSION)
             context.options |= SSL_OPTS
@@ -270,29 +285,9 @@ class HomeAssistantWSGI(object):
         yield from self._handler.finish_connections(60.0)
         yield from self.app.cleanup()
 
-    # def base_app(self, environ, start_response):
-    #     """WSGI Handler of requests to base app."""
-    #     request = self.Request(environ)
-    #     response = self.dispatch_request(request)
-
-    #     if self.cors_origins:
-    #         cors_check = (environ.get('HTTP_ORIGIN') in self.cors_origins)
-    #         cors_headers = ", ".join(ALLOWED_CORS_HEADERS)
-    #         if cors_check:
-    #             response.headers[HTTP_HEADER_ACCESS_CONTROL_ALLOW_ORIGIN] = \
-    #                 environ.get('HTTP_ORIGIN')
-    #             response.headers[HTTP_HEADER_ACCESS_CONTROL_ALLOW_HEADERS] = \
-    #                 cors_headers
-
-    #     return response(environ, start_response)
-
     @staticmethod
     def get_real_ip(request):
         """Return the clients correct ip address, even in proxied setups."""
-        # if request.access_route:
-        #     return request.access_route[-1]
-        # else:
-        # return request.remote_addr
         peername = request.transport.get_extra_info('peername')
         return peername[0] if peername is not None else None
 
@@ -324,6 +319,11 @@ class HomeAssistantView(object):
 
         self.hass = hass
 
+    @callback
+    def options(self, request):
+        """Default options handler for CORS."""
+        return web.Response(status=200)
+
     def json(self, result, status_code=200):
         """Return a JSON response."""
         msg = json.dumps(
@@ -340,11 +340,6 @@ class HomeAssistantView(object):
         assert isinstance(fil, str), 'only string paths allowed'
         return FileSender().send(request, Path(fil))
 
-    def options(self, request):
-        """Default handler for OPTIONS (necessary for CORS preflight)."""
-        # TODO CORS ?
-        return web.Response('', status=200)
-
     def __call__(self, request):
         """Handle incoming request."""
         try:
@@ -357,7 +352,10 @@ class HomeAssistantView(object):
         # Auth code verbose on purpose
         authenticated = False
 
-        if self.hass.wsgi.api_password is None:
+        if request.method == 'OPTIONS':
+            authenticated = True
+
+        elif self.hass.wsgi.api_password is None:
             authenticated = True
 
         elif self.hass.wsgi.is_trusted_ip(remote_addr):
