@@ -258,15 +258,20 @@ class HomeAssistantWSGI(object):
         #         "public, max-age={}".format(cache_time)
         #     })
 
-
     @asyncio.coroutine
     def start(self):
         """Start the wsgi server."""
+        if self.ssl_certificate:
+            context = ssl.SSLContext(SSL_VERSION)
+            context.options |= SSL_OPTS
+            context.set_ciphers(CIPHERS)
+            context.load_cert_chain(self.ssl_certificate, self.ssl_key)
+        else:
+            context = None
+
         self._handler = self.app.make_handler()
         self.server = yield from self.hass.loop.create_server(
-            self._handler, self.server_host, self.server_port)
-
-        # TODO SSL
+            self._handler, self.server_host, self.server_port, ssl=context)
 
     @asyncio.coroutine
     def stop(self):
