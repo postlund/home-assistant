@@ -240,7 +240,6 @@ class HomeAssistantWSGI(object):
         for the redirect, otherwise it has to be a string with placeholders in
         rule syntax.
         """
-
         def redirect(request):
             """Redirect to location."""
             raise HTTPMovedPermanently(redirect_to)
@@ -336,11 +335,6 @@ class HomeAssistantView(object):
             )
 
         self.hass = hass
-
-    @callback
-    def options(self, request):
-        """Default options handler for CORS."""
-        return web.Response(status=200)
 
     def json(self, result, status_code=200):
         """Return a JSON response."""

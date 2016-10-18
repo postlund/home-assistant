@@ -230,7 +230,7 @@ class HistoryPeriodView(HomeAssistantView):
             datetime = dt_util.parse_datetime(datetime)
 
             if datetime is None:
-                return web.Response('Invalid datetime', HTTP_BAD_REQUEST)
+                return self.json_message('Invalid datetime', HTTP_BAD_REQUEST)
 
         one_day = timedelta(days=1)
 
