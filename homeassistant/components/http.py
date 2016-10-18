@@ -364,7 +364,6 @@ def request_handler_factory(view, handler):
 
     Eventually authentication should be managed by middleware.
     """
-
     @asyncio.coroutine
     def handle(request):
         """Handle incoming request."""
