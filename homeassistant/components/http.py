@@ -17,17 +17,15 @@ from ipaddress import ip_address, ip_network
 import voluptuous as vol
 from aiohttp import web
 from aiohttp.file_sender import FileSender
-from aiohttp.errors import HttpMethodNotAllowed
 from aiohttp.web_exceptions import HTTPUnauthorized, HTTPMovedPermanently
 
 from homeassistant.core import callback, is_callback
 import homeassistant.remote as rem
 from homeassistant import util
 from homeassistant.const import (
-    SERVER_PORT, HTTP_HEADER_HA_AUTH, HTTP_HEADER_CACHE_CONTROL,
+    SERVER_PORT, HTTP_HEADER_HA_AUTH,  # HTTP_HEADER_CACHE_CONTROL,
     CONTENT_TYPE_JSON, ALLOWED_CORS_HEADERS, EVENT_HOMEASSISTANT_STOP,
     EVENT_HOMEASSISTANT_START)
-from homeassistant.core import split_entity_id
 import homeassistant.helpers.config_validation as cv
 from homeassistant.components import persistent_notification
 
@@ -85,6 +83,12 @@ CONFIG_SCHEMA = vol.Schema({
             vol.All(cv.ensure_list, [ip_network])
     }),
 }, extra=vol.ALLOW_EXTRA)
+
+
+# TEMP TO GET TESTS TO RUN
+def request_class():
+    """."""
+    raise Exception('not implemented')
 
 
 class HideSensitiveFilter(logging.Filter):
@@ -208,10 +212,24 @@ class HomeAssistantWSGI(object):
             # Instantiate the view, if needed
             view = view(self.hass)
 
-        self.app.router.add_route('*', view.url, view, name=view.name)
+        urls = [view.url] + view.extra_urls
 
-        for url in view.extra_urls:
-            self.app.router.add_route('*', url, view)
+        for method in ('get', 'post', 'delete', 'put'):
+            handler = getattr(view, method, None)
+
+            if not handler:
+                continue
+
+            handler = request_handler_factory(view, handler)
+
+            for url in urls:
+                self.app.router.add_route(method, url, handler)
+
+        # Sadly, aiohttp_cors cannot work with class based views
+        # self.app.router.add_route('*', view.url, view, name=view.name)
+
+        # for url in view.extra_urls:
+        #     self.app.router.add_route('*', url, view)
 
     def register_redirect(self, url, redirect_to):
         """Register a redirect with the server.
@@ -340,41 +358,41 @@ class HomeAssistantView(object):
         assert isinstance(fil, str), 'only string paths allowed'
         return FileSender().send(request, Path(fil))
 
-    def __call__(self, request):
-        """Handle incoming request."""
-        try:
-            handler = getattr(self, request.method.lower())
-        except AttributeError:
-            raise HttpMethodNotAllowed()
 
+def request_handler_factory(view, handler):
+    """Factory to wrap our handler classes.
+
+    Eventually authentication should be managed by middleware.
+    """
+
+    @asyncio.coroutine
+    def handle(request):
+        """Handle incoming request."""
         remote_addr = HomeAssistantWSGI.get_real_ip(request)
 
         # Auth code verbose on purpose
         authenticated = False
 
-        if request.method == 'OPTIONS':
+        if view.hass.wsgi.api_password is None:
             authenticated = True
 
-        elif self.hass.wsgi.api_password is None:
-            authenticated = True
-
-        elif self.hass.wsgi.is_trusted_ip(remote_addr):
+        elif view.hass.wsgi.is_trusted_ip(remote_addr):
             authenticated = True
 
         elif hmac.compare_digest(request.headers.get(HTTP_HEADER_HA_AUTH, ''),
-                                 self.hass.wsgi.api_password):
+                                 view.hass.wsgi.api_password):
             # A valid auth header has been set
             authenticated = True
 
         elif hmac.compare_digest(request.GET.get(DATA_API_PASSWORD, ''),
-                                 self.hass.wsgi.api_password):
+                                 view.hass.wsgi.api_password):
             authenticated = True
 
-        if self.requires_auth and not authenticated:
+        if view.requires_auth and not authenticated:
             _LOGGER.warning('Login attempt or request with an invalid '
                             'password from %s', remote_addr)
             persistent_notification.async_create(
-                self.hass,
+                view.hass,
                 'Invalid password used from {}'.format(remote_addr),
                 'Login attempt failed', NOTIFICATION_ID_LOGIN)
             raise HTTPUnauthorized()
@@ -410,3 +428,5 @@ class HomeAssistantView(object):
                            'Got: {}').format(result)
 
         return web.Response(body=result, status=status_code)
+
+    return handle

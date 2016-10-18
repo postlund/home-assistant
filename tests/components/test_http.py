@@ -161,12 +161,9 @@ class TestHttp:
                            headers={const.HTTP_HEADER_ORIGIN: HTTP_BASE_URL})
 
         allow_origin = const.HTTP_HEADER_ACCESS_CONTROL_ALLOW_ORIGIN
-        allow_headers = const.HTTP_HEADER_ACCESS_CONTROL_ALLOW_HEADERS
-        all_allow_headers = ", ".join(const.ALLOWED_CORS_HEADERS)
 
         assert req.status_code == 200
         assert req.headers.get(allow_origin) == HTTP_BASE_URL
-        assert req.headers.get(allow_headers) == all_allow_headers
 
     def test_cors_allowed_with_password_in_header(self):
         """Test cross origin resource sharing with password in header."""
@@ -178,12 +175,9 @@ class TestHttp:
                            headers=headers)
 
         allow_origin = const.HTTP_HEADER_ACCESS_CONTROL_ALLOW_ORIGIN
-        allow_headers = const.HTTP_HEADER_ACCESS_CONTROL_ALLOW_HEADERS
-        all_allow_headers = ", ".join(const.ALLOWED_CORS_HEADERS)
 
         assert req.status_code == 200
         assert req.headers.get(allow_origin) == HTTP_BASE_URL
-        assert req.headers.get(allow_headers) == all_allow_headers
 
     def test_cors_denied_without_origin_header(self):
         """Test cross origin resource sharing with password in header."""
@@ -212,8 +206,8 @@ class TestHttp:
 
         allow_origin = const.HTTP_HEADER_ACCESS_CONTROL_ALLOW_ORIGIN
         allow_headers = const.HTTP_HEADER_ACCESS_CONTROL_ALLOW_HEADERS
-        all_allow_headers = ", ".join(const.ALLOWED_CORS_HEADERS)
 
         assert req.status_code == 200
         assert req.headers.get(allow_origin) == HTTP_BASE_URL
-        assert req.headers.get(allow_headers) == all_allow_headers
+        assert req.headers.get(allow_headers) == \
+            const.HTTP_HEADER_HA_AUTH.upper()
