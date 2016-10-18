@@ -10,8 +10,6 @@ from datetime import timedelta
 from itertools import groupby
 import voluptuous as vol
 
-from aiohttp import web
-
 from homeassistant.const import HTTP_BAD_REQUEST
 import homeassistant.helpers.config_validation as cv
 import homeassistant.util.dt as dt_util

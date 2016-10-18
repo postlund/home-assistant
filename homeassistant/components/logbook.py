@@ -9,7 +9,6 @@ import logging
 from datetime import timedelta
 from itertools import groupby
 
-from aiohttp import web
 import voluptuous as vol
 
 from homeassistant.core import callback
