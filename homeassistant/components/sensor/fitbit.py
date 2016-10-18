@@ -12,7 +12,7 @@ import time
 
 import voluptuous as vol
 
-from homeassistant.const import callback
+from homeassistant.core import callback
 from homeassistant.components.http import HomeAssistantView
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.helpers.entity import Entity
