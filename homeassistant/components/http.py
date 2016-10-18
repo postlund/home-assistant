@@ -141,12 +141,14 @@ def setup(hass, config):
 
     @callback
     def start_server(event):
+        """Callback to start the server."""
         hass.loop.create_task(server.start())
 
     hass.bus.listen_once(EVENT_HOMEASSISTANT_START, start_server)
 
     @callback
     def stop_server(event):
+        """Callback to stop the server."""
         hass.loop.create_task(server.stop())
 
     hass.bus.listen_once(EVENT_HOMEASSISTANT_STOP, stop_server)
@@ -182,6 +184,7 @@ class HomeAssistantWSGI(object):
         self.server_port = server_port
         self.trusted_networks = trusted_networks
         self.event_forwarder = None
+        self._handler = None
         self.server = None
 
         if cors_origins:
