@@ -1,6 +1,9 @@
 """Support for Apple TV media player."""
 import logging
 
+import pyatv.const as atv_const
+
+from homeassistant.core import callback
 from homeassistant.components.media_player import MediaPlayerDevice
 from homeassistant.components.media_player.const import (
     MEDIA_TYPE_MUSIC,
@@ -19,17 +22,16 @@ from homeassistant.components.media_player.const import (
 from homeassistant.const import (
     CONF_HOST,
     CONF_NAME,
-    EVENT_HOMEASSISTANT_STOP,
+    CONF_DEVICE_ID,
     STATE_IDLE,
     STATE_OFF,
     STATE_PAUSED,
     STATE_PLAYING,
     STATE_STANDBY,
 )
-from homeassistant.core import callback
 import homeassistant.util.dt as dt_util
 
-from . import ATTR_ATV, ATTR_POWER, DATA_APPLE_TV, DATA_ENTITIES
+from .const import DOMAIN, KEY_API, KEY_POWER
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -46,32 +48,13 @@ SUPPORT_APPLE_TV = (
 )
 
 
-async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
-    """Set up the Apple TV platform."""
-    if not discovery_info:
-        return
-
-    # Manage entity cache for service handler
-    if DATA_ENTITIES not in hass.data:
-        hass.data[DATA_ENTITIES] = []
-
-    name = discovery_info[CONF_NAME]
-    host = discovery_info[CONF_HOST]
-    atv = hass.data[DATA_APPLE_TV][host][ATTR_ATV]
-    power = hass.data[DATA_APPLE_TV][host][ATTR_POWER]
-    entity = AppleTvDevice(atv, name, power)
-
-    @callback
-    def on_hass_stop(event):
-        """Stop push updates when hass stops."""
-        atv.push_updater.stop()
-
-    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, on_hass_stop)
-
-    if entity not in hass.data[DATA_ENTITIES]:
-        hass.data[DATA_ENTITIES].append(entity)
-
-    async_add_entities([entity])
+async def async_setup_entry(hass, config_entry, async_add_entities):
+    """Load Apple TV media player based on a config entry."""
+    device_id = config_entry.data[CONF_DEVICE_ID]
+    name = config_entry.data[CONF_NAME]
+    api = hass.data[KEY_API][device_id]
+    power = hass.data[KEY_POWER][device_id]
+    async_add_entities([AppleTvDevice(api, name, power)])
 
 
 class AppleTvDevice(MediaPlayerDevice):
@@ -88,7 +71,19 @@ class AppleTvDevice(MediaPlayerDevice):
 
     async def async_added_to_hass(self):
         """Handle when an entity is about to be added to Home Assistant."""
-        self._power.init()
+        await self._power.init()
+
+    @property
+    def device_info(self):
+        """Return the device info."""
+        return {
+            "identifiers": {(DOMAIN, self.unique_id)},
+            "manufacturer": "Apple",
+            "model": "Media Player",
+            "name": self.name,
+            "sw_version": "0.0",
+            "via_device": (DOMAIN, self.atv.metadata.device_id),
+        }
 
     @property
     def name(self):
@@ -98,7 +93,7 @@ class AppleTvDevice(MediaPlayerDevice):
     @property
     def unique_id(self):
         """Return a unique ID."""
-        return self.atv.metadata.device_id
+        return "mp_" + self.atv.metadata.device_id
 
     @property
     def should_poll(self):
@@ -112,22 +107,21 @@ class AppleTvDevice(MediaPlayerDevice):
             return STATE_OFF
 
         if self._playing:
-            from pyatv import const
 
             state = self._playing.play_state
             if state in (
-                const.PLAY_STATE_IDLE,
-                const.PLAY_STATE_NO_MEDIA,
-                const.PLAY_STATE_LOADING,
+                atv_const.PLAY_STATE_IDLE,
+                atv_const.PLAY_STATE_NO_MEDIA,
+                atv_const.PLAY_STATE_LOADING,
             ):
                 return STATE_IDLE
-            if state == const.PLAY_STATE_PLAYING:
+            if state == atv_const.PLAY_STATE_PLAYING:
                 return STATE_PLAYING
             if state in (
-                const.PLAY_STATE_PAUSED,
-                const.PLAY_STATE_FAST_FORWARD,
-                const.PLAY_STATE_FAST_BACKWARD,
-                const.PLAY_STATE_STOPPED,
+                atv_const.PLAY_STATE_PAUSED,
+                atv_const.PLAY_STATE_FAST_FORWARD,
+                atv_const.PLAY_STATE_FAST_BACKWARD,
+                atv_const.PLAY_STATE_STOPPED,
             ):
                 # Catch fast forward/backward here so "play" is default action
                 return STATE_PAUSED
@@ -156,14 +150,13 @@ class AppleTvDevice(MediaPlayerDevice):
     def media_content_type(self):
         """Content type of current playing media."""
         if self._playing:
-            from pyatv import const
 
             media_type = self._playing.media_type
-            if media_type == const.MEDIA_TYPE_VIDEO:
+            if media_type == atv_const.MEDIA_TYPE_VIDEO:
                 return MEDIA_TYPE_VIDEO
-            if media_type == const.MEDIA_TYPE_MUSIC:
+            if media_type == atv_const.MEDIA_TYPE_MUSIC:
                 return MEDIA_TYPE_MUSIC
-            if media_type == const.MEDIA_TYPE_TV:
+            if media_type == atv_const.MEDIA_TYPE_TV:
                 return MEDIA_TYPE_TVSHOW
 
     @property
@@ -198,9 +191,9 @@ class AppleTvDevice(MediaPlayerDevice):
 
     async def async_get_media_image(self):
         """Fetch media image of current playing image."""
-        state = self.state
-        if self._playing and state not in [STATE_OFF, STATE_IDLE]:
-            return (await self.atv.metadata.artwork()), "image/png"
+        # state = self.state
+        # if self._playing and state not in [STATE_OFF, STATE_IDLE]:
+        #    return (await self.atv.metadata.artwork()), "image/png"
 
         return None, None
 
@@ -222,12 +215,12 @@ class AppleTvDevice(MediaPlayerDevice):
 
     async def async_turn_on(self):
         """Turn the media player on."""
-        self._power.set_power_on(True)
+        await self._power.set_power_on(True)
 
     async def async_turn_off(self):
         """Turn the media player off."""
         self._playing = None
-        self._power.set_power_on(False)
+        await self._power.set_power_on(False)
 
     def async_media_play_pause(self):
         """Pause media on media player.

@@ -1,0 +1,29 @@
+{
+  "config": {
+    "title": "Apple TV",
+    "step": {
+      "user": {
+        "title": "Connect to the device",
+        "description": "Enter device id of the device you want to add (MAC-address in lower case, e.g. aabbccddeeff).",
+        "data": {
+          "device_id": "Device ID"
+        }
+      },
+      "confirm": {
+        "description": "Do you want to add the Apple TV named `{name}` to Home Assistant?",
+        "title": "Discovered Apple TV"
+      },
+      "zeroconf": {
+        "lookup_id_failed": "Failed to look up device id for device."
+      }
+    },
+    "error": {
+      "device_not_found": "Device could not be found on network, verify the specified device id.",
+      "no_usable_service": "A device was found but could not identify any way to establish a connection.",
+      "unknown": "Unexpected error"
+    },
+    "abort": {
+      "already_configured": "Device is already configured"
+    }
+  }
+}

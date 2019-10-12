@@ -1,8 +1,9 @@
 """Remote control support for Apple TV."""
 from homeassistant.components import remote
-from homeassistant.const import CONF_HOST, CONF_NAME
 
-from . import ATTR_ATV, ATTR_POWER, DATA_APPLE_TV
+from homeassistant.const import CONF_NAME, CONF_DEVICE_ID
+
+from .const import DOMAIN, KEY_API, KEY_POWER
 
 
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
@@ -10,11 +11,12 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     if not discovery_info:
         return
 
+    device_id = discovery_info[CONF_DEVICE_ID]
     name = discovery_info[CONF_NAME]
-    host = discovery_info[CONF_HOST]
-    atv = hass.data[DATA_APPLE_TV][host][ATTR_ATV]
-    power = hass.data[DATA_APPLE_TV][host][ATTR_POWER]
-    async_add_entities([AppleTVRemote(atv, power, name)])
+    api = hass.data[KEY_API][device_id]
+    power = hass.data[KEY_POWER][device_id]
+
+    async_add_entities([AppleTVRemote(api, power, name)])
 
 
 class AppleTVRemote(remote.RemoteDevice):
@@ -28,6 +30,18 @@ class AppleTVRemote(remote.RemoteDevice):
         self._power.listeners.append(self)
 
     @property
+    def device_info(self):
+        """Return the device info."""
+        return {
+            "identifiers": {(DOMAIN, self.unique_id)},
+            "manufacturer": "Apple",
+            "model": "Remote",
+            "name": self.name,
+            "sw_version": "0.0",
+            "via_device": (DOMAIN, self._atv.metadata.device_id),
+        }
+
+    @property
     def name(self):
         """Return the name of the device."""
         return self._name
@@ -35,7 +49,7 @@ class AppleTVRemote(remote.RemoteDevice):
     @property
     def unique_id(self):
         """Return a unique ID."""
-        return self._atv.metadata.device_id
+        return "remote_" + self._atv.metadata.device_id
 
     @property
     def is_on(self):
@@ -52,14 +66,14 @@ class AppleTVRemote(remote.RemoteDevice):
 
         This method is a coroutine.
         """
-        self._power.set_power_on(True)
+        await self._power.set_power_on(True)
 
     async def async_turn_off(self, **kwargs):
         """Turn the device off.
 
         This method is a coroutine.
         """
-        self._power.set_power_on(False)
+        await self._power.set_power_on(False)
 
     def async_send_command(self, command, **kwargs):
         """Send a command to one device.

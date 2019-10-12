@@ -20,6 +20,9 @@ ZEROCONF = {
     ],
     "_hap._tcp.local.": [
         "homekit_controller"
+    ],
+    "_mediaremotetv._tcp.local.": [
+        "apple_tv"
     ]
 }
 

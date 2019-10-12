@@ -10,6 +10,7 @@ FLOWS = [
     "airly",
     "ambiclimate",
     "ambient_station",
+    "apple_tv",
     "axis",
     "cast",
     "cert_expiry",

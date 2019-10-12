@@ -1,10 +1,15 @@
 {
   "domain": "apple_tv",
-  "name": "Apple tv",
+  "name": "Apple TV",
+  "config_flow": true,
   "documentation": "https://www.home-assistant.io/integrations/apple_tv",
   "requirements": [
-    "pyatv==0.3.13"
+    "pyatv==0.4.0a1"
   ],
-  "dependencies": ["configurator"],
-  "codeowners": []
+  "zeroconf": ["_mediaremotetv._tcp.local."],
+  "homekit": {},
+  "dependencies": [],
+  "codeowners": [
+    "@postlund"
+  ]
 }
