@@ -1,9 +1,9 @@
 """Remote control support for Apple TV."""
 from homeassistant.components import remote
 
-from homeassistant.const import CONF_NAME, CONF_DEVICE_ID
+from homeassistant.const import CONF_NAME
 
-from .const import DOMAIN, KEY_API, KEY_POWER
+from .const import DOMAIN, KEY_API, KEY_POWER, CONF_IDENTIFIER
 
 
 async def async_setup_platform(hass, config, async_add_entities, discovery_info=None):
@@ -11,10 +11,10 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     if not discovery_info:
         return
 
-    device_id = discovery_info[CONF_DEVICE_ID]
+    identifier = discovery_info[CONF_IDENTIFIER]
     name = discovery_info[CONF_NAME]
-    api = hass.data[KEY_API][device_id]
-    power = hass.data[KEY_POWER][device_id]
+    api = hass.data[KEY_API][identifier]
+    power = hass.data[KEY_POWER][identifier]
 
     async_add_entities([AppleTVRemote(api, power, name)])
 

@@ -1,16 +1,28 @@
 {
   "config": {
     "title": "Apple TV",
+    "flow_title": "Apple TV: {name}",
     "step": {
       "user": {
         "title": "Connect to the device",
-        "description": "Enter device id of the device you want to add (MAC-address in lower case, e.g. aabbccddeeff).",
+        "description": "Enter a device identifier (you can find it with: atvremote scan).",
         "data": {
           "device_id": "Device ID"
         }
       },
+      "pair_with_pin": {
+        "title": "Pair with device",
+        "description": "Pairing is required for protocol `{protocol}`. Please input PIN code displayed on screen.",
+        "data": {
+          "pin": "PIN Code"
+        }
+      },
+      "pair_no_pin": {
+        "title": "Pair with device",
+        "description": "Pairing is required for protocol `{protocol}`. Please enter PIN {pin} on device to continue."
+      },
       "confirm": {
-        "description": "Do you want to add the Apple TV named `{name}` to Home Assistant?",
+        "description": "Do you want to setup the Apple TV named `{name}` in Home Assistant?",
         "title": "Discovered Apple TV"
       },
       "zeroconf": {
@@ -20,10 +32,16 @@
     "error": {
       "device_not_found": "Device could not be found on network, verify the specified device id.",
       "no_usable_service": "A device was found but could not identify any way to establish a connection.",
-      "unknown": "Unexpected error"
+      "unknown": "Unexpected error",
+      "auth": "Authentication error (invalid PIN?)"
     },
     "abort": {
-      "already_configured": "Device is already configured"
+      "already_configured": "Device is already configured",
+      "no_credentials": "No credentials available for device",
+      "unrecoverable_error": "An unrecoverable occurred",
+      "device_did_not_pair": "No attempt to finish pairing process was made from the device.",
+      "backoff": "Device does not accept pairing reqests at this stage, try again later.",
+      "timeout": "Timed out while waiting for device"
     }
   }
 }

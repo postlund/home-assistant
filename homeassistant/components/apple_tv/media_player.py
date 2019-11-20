@@ -22,7 +22,6 @@ from homeassistant.components.media_player.const import (
 from homeassistant.const import (
     CONF_HOST,
     CONF_NAME,
-    CONF_DEVICE_ID,
     STATE_IDLE,
     STATE_OFF,
     STATE_PAUSED,
@@ -31,7 +30,7 @@ from homeassistant.const import (
 )
 import homeassistant.util.dt as dt_util
 
-from .const import DOMAIN, KEY_API, KEY_POWER
+from .const import DOMAIN, KEY_API, KEY_POWER, CONF_IDENTIFIER
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -50,10 +49,10 @@ SUPPORT_APPLE_TV = (
 
 async def async_setup_entry(hass, config_entry, async_add_entities):
     """Load Apple TV media player based on a config entry."""
-    device_id = config_entry.data[CONF_DEVICE_ID]
+    identifier = config_entry.data[CONF_IDENTIFIER]
     name = config_entry.data[CONF_NAME]
-    api = hass.data[KEY_API][device_id]
-    power = hass.data[KEY_POWER][device_id]
+    api = hass.data[KEY_API][identifier]
+    power = hass.data[KEY_POWER][identifier]
     async_add_entities([AppleTvDevice(api, name, power)])
 
 
@@ -174,9 +173,8 @@ class AppleTvDevice(MediaPlayerDevice):
     @property
     def media_position_updated_at(self):
         """Last valid time of media position."""
-        state = self.state
-        if state in (STATE_PLAYING, STATE_PAUSED):
-            return dt_util.utcnow()
+        if self.state in (STATE_PLAYING, STATE_PAUSED):
+           return dt_util.utcnow()
 
     async def async_play_media(self, media_type, media_id, **kwargs):
         """Send the play_media command to the media player."""

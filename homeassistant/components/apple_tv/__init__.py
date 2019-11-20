@@ -7,12 +7,13 @@ from homeassistant.core import callback
 from homeassistant.helpers import discovery
 from homeassistant.const import (
     CONF_NAME,
-    CONF_DEVICE_ID,
-    CONF_PROTOCOL,
     EVENT_HOMEASSISTANT_STOP,
 )
 
-from .const import DOMAIN, APPLE_TV_DEVICE_TYPES, KEY_API, KEY_POWER
+from .const import (
+    DOMAIN, CONF_IDENTIFIER, CONF_PROTOCOL, CONF_CREDENTIALS,
+    APPLE_TV_DEVICE_TYPES, KEY_API, KEY_POWER
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -26,16 +27,21 @@ async def async_setup(hass, config):
 
 async def async_setup_entry(hass, entry):
     """Set up a config entry for Apple TV."""
-    from pyatv import scan_for_apple_tvs, connect_to_apple_tv
+    import pyatv
 
-    device_id = entry.data[CONF_DEVICE_ID]
+    identifier = entry.data[CONF_IDENTIFIER]
     protocol = entry.data[CONF_PROTOCOL]
-    atvs = await scan_for_apple_tvs(hass.loop, device_id=device_id, protocol=protocol)
+    credentials = entry.data[CONF_CREDENTIALS]
+    atvs = await pyatv.scan(hass.loop, identifier=identifier, protocol=protocol)
     if not atvs:
         _LOGGER.error("Failed to find device")
         return False
 
-    atv = await connect_to_apple_tv(atvs[0], hass.loop)
+    conf = atvs[0]
+    for protocol, credentials in credentials.items():
+        conf.set_credentials(int(protocol), credentials)
+
+    atv = await pyatv.connect(conf, hass.loop)
     power = AppleTVPowerManager(hass, atv, False)
 
     @callback
@@ -45,14 +51,14 @@ async def async_setup_entry(hass, entry):
 
     hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, on_hass_stop)
 
-    hass.data.setdefault(KEY_API, {})[device_id] = atv
-    hass.data.setdefault(KEY_POWER, {})[device_id] = power
+    hass.data.setdefault(KEY_API, {})[identifier] = atv
+    hass.data.setdefault(KEY_POWER, {})[identifier] = power
 
     dev_reg = await hass.helpers.device_registry.async_get_registry()
     dev_reg.async_get_or_create(
         config_entry_id=entry.entry_id,
         connections=set(),
-        identifiers={(DOMAIN, entry.data[CONF_DEVICE_ID])},
+        identifiers={(DOMAIN, entry.data[CONF_IDENTIFIER])},
         manufacturer="Apple",
         name="Apple TV",
         # model='',
@@ -88,7 +94,7 @@ class AppleTVPowerManager:
         """Initialize power management."""
         if self._is_on:
             self.atv.push_updater.start()
-            await self.atv.login()
+            await self.atv.connect()
 
     @property
     def turned_on(self):
@@ -103,7 +109,7 @@ class AppleTVPowerManager:
                 self.atv.push_updater.stop()
             else:
                 self.atv.push_updater.start()
-                await self.atv.login()
+                await self.atv.connect()
 
             for listener in self.listeners:
                 self.hass.async_create_task(listener.async_update_ha_state())

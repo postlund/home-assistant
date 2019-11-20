@@ -1,15 +1,17 @@
 """Config flow for Apple TV integration."""
 import logging
+from random import randrange
 
 import voluptuous as vol
 
 from homeassistant import core, config_entries, exceptions
-from homeassistant.const import CONF_NAME, CONF_DEVICE_ID, CONF_PROTOCOL
-from .const import DOMAIN
+from homeassistant.const import CONF_PIN, CONF_NAME, CONF_PROTOCOL, CONF_TYPE
+from .const import DOMAIN, CONF_IDENTIFIER, CONF_CREDENTIALS
 
 _LOGGER = logging.getLogger(__name__)
 
-DATA_SCHEMA = vol.Schema({"device_id": str})
+DATA_SCHEMA = vol.Schema({vol.Required(CONF_IDENTIFIER): str})
+INPUT_PIN_SCHEMA = vol.Schema({vol.Required(CONF_PIN, default=None): int})
 
 
 class AppleTVConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -20,84 +22,197 @@ class AppleTVConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     def __init__(self):
         self._atv = None
-        self._device_id = None
+        self._identifier = None
         self._protocol = None
+        self._pairing = None
+        self._credentials = {}  # Protocol -> credentials
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step."""
+        import pyatv
+
         errors = {}
         if user_input is not None:
             try:
-                self._device_id = user_input["device_id"]
-                return await self.async_step_find_device()
+                self._identifier = user_input[CONF_IDENTIFIER]
+                return await self.async_find_device()
             except DeviceNotFound:
                 errors["base"] = "device_not_found"
-            except NoUsableService:
+            except pyatv.exceptions.NoServiceError:
                 errors["base"] = "no_usable_service"
             except Exception:  # pylint: disable=broad-except
                 _LOGGER.exception("Unexpected exception")
                 errors["base"] = "unknown"
 
         return self.async_show_form(
-            step_id="user", data_schema=DATA_SCHEMA, errors=errors
-        )
+            step_id="user", data_schema=DATA_SCHEMA, errors=errors)
 
-    async def async_step_find_device(self, user_input=None):
-        """Ha"dle initial step."""
-        from pyatv import const, scan_for_apple_tvs
 
-        for entry in self._async_current_entries():
-            if entry.data[CONF_DEVICE_ID] == self._device_id:
-                return self.async_abort(reason="already_configured")
+    async def async_step_zeroconf(self, discovery_info):
+        """Handle device found via zeroconf."""
+        from pyatv import const
 
-        atvs = await scan_for_apple_tvs(
-            self.hass.loop, timeout=3, device_id=self._device_id
-        )
+        service_type = discovery_info[CONF_TYPE]
+        properties = discovery_info['properties']
+
+        if service_type == "_mediaremotetv._tcp.local.":
+            self._identifier = properties['UniqueIdentifier']
+            name = properties["Name"]
+        elif service_type == "_touch-able._tcp.local.":
+            self._identifier = discovery_info['name'].split('.')[0]
+            name = properties["CtlN"]
+        elif service_type == "_appletv-v2._tcp.local.":
+            self._identifier = discovery_info['name'].split('.')[0]
+            name = "{0} (Home Sharing)".format(properties["Name"])
+        else:
+            return self.async_abort(reason="unrecoverable")
+
+        self.context["title_placeholders"] = {"name": name}
+        return await self.async_find_device()
+
+    async def async_find_device(self):
+        """Scan for the selected device to discover services."""
+        import pyatv
+
+        atvs = await pyatv.scan(
+            self.hass.loop, timeout=3, identifier=self._identifier)
         if not atvs:
             raise DeviceNotFound()
 
         self._atv = atvs[0]
-        if self._atv.get_service(const.PROTOCOL_MRP) is not None:
-            self._protocol = const.PROTOCOL_MRP
-        elif self._atv.get_service(const.PROTOCOL_DMAP) is not None:
-            self._protocol = const.PROTOCOL_DMAP
+        self._protocol = self._atv.main_service().protocol
 
-        if self._protocol is None:
-            raise NoUsableService()
+        for identifier in self._atv.all_identifiers:
+            if self._is_already_configured(identifier):
+                return self.async_abort(reason="already_configured")
+
+        # If credentials were found, save them
+        for service in self._atv.services:
+            if service.credentials:
+                self._credentials[service.protocol] = service.credentials
 
         return await self.async_step_confirm()
-
-    async def async_step_zeroconf(self, discovery_info):
-        from pyatv import get_device_id
-
-        self._device_id = await get_device_id(discovery_info["host"], self.hass.loop)
-        if not self._device_id:
-            return self.async_abort(reason="lookup_id_failed")
-
-        return await self.async_step_find_device()
 
     async def async_step_confirm(self, user_input=None):
         """Handle user-confirmation of discovered node."""
         if user_input is not None:
-            return self._async_get_entry()
+            if self._is_already_configured(self._identifier):
+                return self.async_abort(reason="already_configured")
+
+            return await self.async_begin_pairing()
         return self.async_show_form(
-            step_id="confirm", description_placeholders={"name": self._atv.name}
-        )
+            step_id="confirm", description_placeholders={"name": self._atv.name})
+
+    async def async_begin_pairing(self):
+        """Start pairing process for the next available protocol."""
+        from pyatv import pair, exceptions
+
+        self._protocol = self._next_protocol_to_pair()
+
+        # Any more protocols to pair? Else bail out here
+        if not self._protocol:
+            return self._async_get_entry()
+
+        # Initiate the pairing process
+        abort_reason = None
+        try:
+            self._pairing = await pair(self._atv, self._protocol, self.hass.loop)
+            await self._pairing.begin()
+        except asyncio.TimeoutError:
+            abort_reason = "timeout"
+        except exceptions.BackOffError:
+            abort_reason = "backoff"
+        except Exception:
+            _LOGGER.exception("Unexpected exception")
+            abort_reason = "unrecoverable_error"
+
+        if abort_reason:
+            if self._pairing:
+                await self._pairing.close()
+            return self.async_abort(reason=abort_reason)
+
+        # Choose step depending on if PIN is required from user or not
+        if self._pairing.device_provides_pin:
+            return await self.async_step_pair_with_pin()
+
+        return await self.async_step_pair_no_pin()
+
+    async def async_step_pair_with_pin(self, user_input=None):
+        """Handle pairing step where a PIN is required from the user."""
+        import pyatv
+        from pyatv import convert
+
+        errors = {}
+        if user_input is not None:
+            try:
+                self._pairing.pin(user_input[CONF_PIN])
+                await self._pairing.finish()
+                self._credentials[self._protocol] = str(self._pairing.service.credentials)
+                await self._pairing.close()
+                return await self.async_begin_pairing()
+            except pyatv.exceptions.DeviceAuthenticationError:
+                errors["base"] = "auth"
+            except Exception as ex:  # pylint: disable=broad-except
+                _LOGGER.exception("Unexpected exception")
+                errors["base"] = "unknown"
+
+        return self.async_show_form(
+            step_id="pair_with_pin", data_schema=INPUT_PIN_SCHEMA, errors=errors,
+            description_placeholders={
+                "protocol": convert.protocol_str(self._protocol)})
+
+    async def async_step_pair_no_pin(self, user_input=None):
+        """Handle step where user has to enter a PIN on the device."""
+        from pyatv import convert
+
+        if user_input is not None:
+            if self._pairing.has_paired:
+                await self._pairing.close()
+                return await self.async_begin_pairing()
+            return self.async_abort(reason="device_did_not_pair")
+
+        random_pin = randrange(1000, stop=10000)
+        self._pairing.pin(random_pin)
+        return self.async_show_form(
+            step_id="pair_no_pin",
+            description_placeholders={
+                "protocol": convert.protocol_str(self._protocol),
+                "pin": random_pin
+                })
 
     def _async_get_entry(self):
         return self.async_create_entry(
             title=self._atv.name,
             data={
-                CONF_DEVICE_ID: self._atv.device_id,
-                CONF_NAME: self._atv.name,
+                CONF_IDENTIFIER: self._atv.identifier,
                 CONF_PROTOCOL: self._protocol,
+                CONF_NAME: self._atv.name,
+                CONF_CREDENTIALS: self._credentials,
             },
         )
+
+    def _next_protocol_to_pair(self):
+        def _needs_pairing(protocol):
+            if self._atv.get_service(protocol) is None:
+                return False
+            return protocol not in self._credentials
+
+        from pyatv import const
+
+        protocols = [const.PROTOCOL_MRP, const.PROTOCOL_DMAP, const.PROTOCOL_AIRPLAY]
+        for protocol in protocols:
+            if _needs_pairing(protocol):
+                return protocol
+
+        return None
+
+    def _is_already_configured(self, identifier):
+        for ident in self._atv.all_identifiers:
+            for entry in self._async_current_entries():
+                if entry.data[CONF_IDENTIFIER] == identifier:
+                    return True
+        return False
 
 
 class DeviceNotFound(exceptions.HomeAssistantError):
     """Error to indicate device could not be found."""
-
-
-class NoUsableService(exceptions.HomeAssistantError):
-    """Error to indicate no usable service."""

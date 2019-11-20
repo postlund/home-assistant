@@ -6,6 +6,9 @@ To update, run python3 -m script.hassfest
 # fmt: off
 
 ZEROCONF = {
+    "_appletv-v2._tcp.local.": [
+        "apple_tv"
+    ],
     "_axis-video._tcp.local.": [
         "axis"
     ],
@@ -22,6 +25,9 @@ ZEROCONF = {
         "homekit_controller"
     ],
     "_mediaremotetv._tcp.local.": [
+        "apple_tv"
+    ],
+    "_touch-able._tcp.local.": [
         "apple_tv"
     ]
 }
