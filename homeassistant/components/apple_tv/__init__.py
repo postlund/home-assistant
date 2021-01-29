@@ -180,8 +180,11 @@ class AppleTVManager:
 
         This is a callback function from pyatv.interface.DeviceListener.
         """
-        _LOGGER.warning('Connection lost to Apple TV "%s"', self.atv.name)
+        _LOGGER.warning(
+            'Connection lost to Apple TV "%s"', self.config_entry.data.get(CONF_NAME)
+        )
         if self.atv:
+            self.atv.listener = None
             self.atv.close()
             self.atv = None
         self._connection_was_lost = True
@@ -194,6 +197,7 @@ class AppleTVManager:
         This is a callback function from pyatv.interface.DeviceListener.
         """
         if self.atv:
+            self.atv.listener = None
             self.atv.close()
             self.atv = None
         self._dispatch_send(SIGNAL_DISCONNECTED)
